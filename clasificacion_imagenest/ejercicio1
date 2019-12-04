@@ -1,0 +1,61 @@
+install.packages("rgdal")
+install.packages("raster")
+install.packages("caret")
+install.packages("randomForest")
+install.packages("e1071")
+install.packages("lattice")
+install.packages("ggplot2")
+
+
+
+library(rgdal)
+library(raster)
+library(caret)
+library(ggplot2)
+
+library(randomForest)
+
+
+img <- brick("G:/IMEPLAN/ejercicio_reclassimg/L7007057_20000316_refl")
+names(img) <- paste0("B", c(1:5, 7))  
+
+plotRGB(img * (img >= 0), r = 4, g = 5, b = 3, scale = 10000)
+
+
+trainData <- shapefile("G:/IMEPLAN/ejercicio_reclassimg/training_15.shp")
+responseCol <- "class"
+
+
+dfAll = data.frame(matrix(vector(), nrow = 0, ncol = length(names(img)) + 1))   
+for (i in 1:length(unique(trainData[[responseCol]]))){
+  category <- unique(trainData[[responseCol]])[i]
+  categorymap <- trainData[trainData[[responseCol]] == category,]
+  dataSet <- extract(img, categorymap)
+  if(is(trainData, "SpatialPointsDataFrame")){
+    dataSet <- cbind(dataSet, class = as.numeric(rep(category, nrow(dataSet))))
+    dfAll <- rbind(dfAll, dataSet[complete.cases(dataSet),])
+  }
+  if(is(trainData, "SpatialPolygonsDataFrame")){
+    dataSet <- dataSet[!unlist(lapply(dataSet, is.null))]
+    dataSet <- lapply(dataSet, function(x){cbind(x, class = as.numeric(rep(category, nrow(x))))})
+    df <- do.call("rbind", dataSet)
+    dfAll <- rbind(dfAll, df)
+  }
+}
+dfAll<- as.data.frame(dfAll)
+
+nsamples <- 1000
+sdfAll <- dfAll[sample(1:nrow(dfAll), nsamples), ]
+
+
+modFit_rf <- train(as.factor(class) ~ B3 + B4 + B5, method = "rf", data = sdfAll)
+
+
+
+beginCluster()
+system.time(preds_rf <- clusterR(img, raster::predict, args = list(model = modFit_rf))
+endCluster()
+            
+            
+            plot (preds_rf)
+            
